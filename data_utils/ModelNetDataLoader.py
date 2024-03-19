@@ -36,9 +36,9 @@ def farthest_point_sample(point, npoint):
     distance = np.ones((N,)) * 1e10
     farthest = np.random.randint(0, N)
     for i in range(npoint):
-        centroids[i] = farthest
+        centroids[i] = farthest  # after a loop, choose a farthest point 
         centroid = xyz[farthest, :]
-        dist = np.sum((xyz - centroid) ** 2, -1)
+        dist = np.sum((xyz - centroid) ** 2, -1) # get the distance between centroid and other points 
         mask = dist < distance
         distance[mask] = dist[mask]
         farthest = np.argmax(distance, -1)
@@ -73,8 +73,8 @@ class ModelNetDataLoader(Dataset):
 
         assert (split == 'train' or split == 'test')
         shape_names = ['_'.join(x.split('_')[0:-1]) for x in shape_ids[split]]
-        self.datapath = [(shape_names[i], os.path.join(self.root, shape_names[i], shape_ids[split][i]) + '.txt') for i
-                         in range(len(shape_ids[split]))]
+        self.datapath = [(shape_names[i], os.path.join(self.root, shape_names[i], shape_ids[split][i]) + '.txt') \
+                         for i in range(len(shape_ids[split]))]
         print('The size of %s data is %d' % (split, len(self.datapath)))
 
         if self.uniform:

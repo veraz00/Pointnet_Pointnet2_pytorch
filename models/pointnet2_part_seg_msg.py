@@ -1,7 +1,10 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
-from models.pointnet2_utils import PointNetSetAbstractionMsg,PointNetSetAbstraction,PointNetFeaturePropagation
+import sys 
+from pathlib import Path
+# sys.path.append('/home/zlin//Pointnet_Pointnet2_pytorch')
+from pointnet2_utils import PointNetSetAbstractionMsg,PointNetSetAbstraction,PointNetFeaturePropagation
 
 
 class get_model(nn.Module):
@@ -13,6 +16,7 @@ class get_model(nn.Module):
             additional_channel = 0
         self.normal_channel = normal_channel
         self.sa1 = PointNetSetAbstractionMsg(512, [0.1, 0.2, 0.4], [32, 64, 128], 3+additional_channel, [[32, 32, 64], [64, 64, 128], [64, 96, 128]])
+        # npoint, radius_list, nsample_list, in_channel, mlp_list
         self.sa2 = PointNetSetAbstractionMsg(128, [0.4,0.8], [64, 128], 128+128+64, [[128, 128, 256], [128, 196, 256]])
         self.sa3 = PointNetSetAbstraction(npoint=None, radius=None, nsample=None, in_channel=512 + 3, mlp=[256, 512, 1024], group_all=True)
         self.fp3 = PointNetFeaturePropagation(in_channel=1536, mlp=[256, 256])
@@ -25,7 +29,7 @@ class get_model(nn.Module):
 
     def forward(self, xyz, cls_label):
         # Set Abstraction layers
-        B,C,N = xyz.shape
+        B,C,N = xyz.shape # 4, 6, 223424
         if self.normal_channel:
             l0_points = xyz
             l0_xyz = xyz[:,:3,:]
@@ -33,11 +37,22 @@ class get_model(nn.Module):
             l0_points = xyz
             l0_xyz = xyz
         l1_xyz, l1_points = self.sa1(l0_xyz, l0_points)
+        # (B, C, S = number of centroid), (B, output_channels, S = number of centroid)
+        # l0_xyz: (4, 3, 223424), l0_points: (4, 6, 223424)
+        # l1_xyz: (4, 3, 512), l1_points: (4, 128 + 128+64, 512)
+
         l2_xyz, l2_points = self.sa2(l1_xyz, l1_points)
+        # l2_xyz: (4, 3, 128), l2_points: (4, 256 + 256, 128)
         l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
+        # l3_xyz: (4, 3, 1), l3_points: (4, 1024, 1)
+        # (bs, channels, num_centroids), (bs, channels, num_centroids)
+
         # Feature Propagation layers
         l2_points = self.fp3(l2_xyz, l3_xyz, l2_points, l3_points)
+        # l2_points: (4, 256, 128)
+    
         l1_points = self.fp2(l1_xyz, l2_xyz, l1_points, l2_points)
+        # l1_points: (4, 128, 512)
         cls_label_one_hot = cls_label.view(B,16,1).repeat(1,1,N)
         l0_points = self.fp1(l0_xyz, l1_xyz, torch.cat([cls_label_one_hot,l0_xyz,l0_points],1), l1_points)
         # FC layers
@@ -57,3 +72,15 @@ class get_loss(nn.Module):
         total_loss = F.nll_loss(pred, target)
 
         return total_loss
+
+
+if __name__ == '__main__':
+    model = get_model(num_classes = 7, normal_channel=True)
+    input = torch.rand(4, 6, 22342)
+    cls_label = torch.rand(4, 16, 22342)
+
+    model.eval()
+    with torch.no_grad():
+        output = model(input, cls_label)
+        print(output[0].shape)
+        print(output[1].shape)
